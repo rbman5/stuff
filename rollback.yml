@@ -1,0 +1,58 @@
+
+- name: Roll back previous btrfs snapshot
+  hosts: u26
+  become: true
+  handlers:
+    - name: Update GRUB
+      ansible.builtin.shell: update-grub
+      become: yes
+  tasks:
+    - name: Set btrfs root filesystem to read-write
+      ansible.builtin.command: btrfs property set / ro false
+      become: true
+
+    - name: List btrfs subvolumes
+      ansible.builtin.command: btrfs subvolume list /
+      become: true
+      register: btrfs_subvol_list
+
+# Expects name root-<date>
+# {{ latest_snapshot }} → root-2026-03-28_221530
+# {{ latest_snapshot_id }} → 256
+
+    - name: Parse and get latest snapshot
+      ansible.builtin.set_fact:
+        latest_snapshot_line: "{{ btrfs_subvol_list.stdout_lines 
+                                  | select('search', 'root-\\d{4}-\\d{2}-\\d{2}_\\d{6}') 
+                                  | sort 
+                                  | last }}"
+    
+    - name: Extract snapshot name and ID
+      ansible.builtin.set_fact:
+        latest_snapshot: "{{ latest_snapshot_line | regex_search('root-\\d{4}-\\d{2}-\\d{2}_\\d{6}') }}"
+        latest_snapshot_id: "{{ latest_snapshot_line | regex_search('ID (\\d+)', '\\1') | first }}"    
+
+#    - name: Parse snapshot ID based off name
+#      ansible.builtin.set_fact:
+#        snapshot_id: "{{ btrfs_subvol_list.stdout_lines | 
+#                         select('search', '\\.snapshots/root-base') | 
+#                         first | 
+#                         regex_search('ID (\\d+)', '\\1') | 
+#                         first }}"
+
+    - name: Set snapshot as default btrfs subvolume
+      ansible.builtin.command: "btrfs subvolume set-default {{ latest_snapshot_id }} /"
+      become: true
+
+    - name: Reboot
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        post_reboot_delay: 10
+
+    - name: Set btrfs root filesystem to read-write
+      ansible.builtin.command: btrfs property set / ro false
+      become: true
+
+    - name: Remount root filesystem read-write
+      ansible.builtin.command: mount -o remount,rw /
+      become: true

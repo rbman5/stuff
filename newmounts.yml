@@ -1,0 +1,46 @@
+---
+
+
+- name: Create roothome logical volume
+  community.general.lvol:
+    vg: "{{ vg_name }}"
+    lv: roothome_lv
+    size: 1g
+    force: true
+  become: true
+
+- name: Create filesystem on roothome_lv
+  community.general.filesystem:
+    fstype: ext4
+    dev: /dev/{{ vg_name }}/roothome_lv
+  become: true
+
+- name: Mount roothome_lv at /root
+  ansible.posix.mount:
+    path: /root
+    src: /dev/{{ vg_name }}/roothome_lv
+    fstype: ext4
+    state: mounted
+  become: true
+
+- name: Create home logical volume
+  community.general.lvol:
+    vg: "{{ vg_name }}"
+    lv: home_lv
+    size: 2g
+  become: true
+
+- name: Create filesystem on home_lv
+  community.general.filesystem:
+    fstype: ext4
+    dev: /dev/{{ vg_name }}/home_lv
+  become: true
+
+- name: Mount home_lv at /home
+  ansible.posix.mount:
+    path: /home
+    src: /dev/{{ vg_name }}/home_lv
+    fstype: ext4
+    state: mounted
+  become: true
+

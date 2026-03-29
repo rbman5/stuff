@@ -1,0 +1,211 @@
+---
+
+
+- name: Install and Configure grub-btrfs on Ubuntu
+  hosts: u26
+  become: true
+  handlers:
+    - name: Update GRUB
+      ansible.builtin.shell: update-grub
+      become: yes
+  vars:
+    git_repo: "https://github.com/Antynea/grub-btrfs"
+    working_dir: "/root/grub-btrfs"
+    vg_name: vg00
+    ubuntu_deps:
+      - git
+      - make
+      - btrfs-progs
+      - grub-common
+      - gawk
+      - inotify-tools # Required for the auto-update daemon
+
+  tasks:
+
+    - name: Set timezone to CDT (America/Chicago)
+      community.general.timezone:
+        name: America/Chicago
+      become: true
+
+    - name: Start and enable chrony
+      ansible.builtin.systemd:
+        name: chrony
+        state: restarted
+        enabled: true
+      become: true
+
+    - name: Force NTP sync
+      ansible.builtin.command: chronyc makestep
+      become: true
+
+    - name: Refresh facts to pick up corrected time
+      ansible.builtin.setup:
+        filter: ansible_date_time
+
+    - name: Disable swap for current session
+      ansible.builtin.command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+      become: true
+    
+    - name: Comment out swap.img in fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^(/swap\.img.*)$'
+        replace: '# \1'
+      become: true
+    
+    - name: Install required system packages
+      ansible.builtin.apt:
+        name: "{{ ubuntu_deps }}"
+        state: present
+        update_cache: yes
+
+    - name: Clone the grub-btrfs repository
+      ansible.builtin.git:
+        repo: "{{ git_repo }}"
+        dest: "{{ working_dir }}"
+        version: master
+        force: yes
+      register: git_clone
+
+    - name: Build and install from source
+      community.general.make:
+        chdir: "{{ working_dir }}"
+        target: install
+      when: git_clone.changed
+
+    - name: Update GRUB to detect existing snapshots
+      ansible.builtin.command: update-grub
+      changed_when: true
+
+    - name: Enable and start grub-btrfsd daemon
+      ansible.builtin.systemd:
+        name: grub-btrfsd
+        enabled: yes
+        state: started
+
+#    - name: Install Snapper
+#      ansible.builtin.apt:
+#        name: snapper
+#        state: present
+#        update_cache: yes
+#      become: true
+#
+#    - name: Stop and disable Snapper systemd timers
+#      ansible.builtin.systemd_service:
+#        name: "{{ item }}"
+#        state: stopped
+#        enabled: false
+#      loop:
+#        - snapper-timeline.timer
+#        - snapper-cleanup.timer
+#        - snapper-boot.timer
+#      become: true
+#      ignore_errors: true # Prevents failure if a specific timer doesn't exist yet
+
+    - name: Disable Snapper APT hooks (Pre/Post snapshots)
+      ansible.builtin.file:
+        path: /etc/apt/apt.conf.d/80snapper
+        state: absent
+      become: true
+
+    - name: Set GRUB timeout to 7 seconds
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_TIMEOUT='
+        line: 'GRUB_TIMEOUT=7'
+
+    - name: Set GRUB timeout style to menu
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_TIMEOUT_STYLE='
+        line: 'GRUB_TIMEOUT_STYLE=menu'
+
+    - name: Ensure GRUB hidden timeout is disabled (to force menu visibility)
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_HIDDEN_TIMEOUT='
+        state: absent
+
+    - name: Update GRUB to apply changes
+      ansible.builtin.command: update-grub
+      changed_when: true
+      
+    - name: Enable Btrfs quota for /
+      ansible.builtin.command: btrfs quota enable /
+      become: true
+      tags:
+        - quota
+
+#    - name: Create Snapper config for root partition
+#      ansible.builtin.command:
+#        cmd: snapper -c root create-config /
+#        creates: /etc/snapper/configs/root
+#      become: true
+#
+
+    - name: Ensure snapshots directory exists
+      ansible.builtin.file:
+        path: /.snapshots
+        state: directory
+        mode: '0755'
+      become: true
+      tags:
+        - base
+
+    - name: Take read-only btrfs snapshot of root volume
+      ansible.builtin.command: "btrfs subvolume snapshot -r / /.snapshots/root-{{ snapshot_date }}" 
+      become: true
+      notify: Update GRUB
+      vars:
+        snapshot_date: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
+      tags:
+        - base
+
+    - name: Take read-only btrfs snapshot of root volume
+      ansible.builtin.command: "btrfs subvolume snapshot -r / /.snapshots/root-{{ snapshot_date }}"
+      become: true
+      notify: Update GRUB
+      vars:
+        snapshot_date: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
+      tags:
+        - never
+        - snap
+
+#    - name: Check if "base" snapshot already exists
+#      ansible.builtin.command: snapper -c root list
+#      register: snapper_list
+#      changed_when: false
+#      tags:
+#        - base
+#
+#    - name: Create "base" snapshot if missing
+#      ansible.builtin.command:
+#        cmd: snapper -c root create --description "base" --type single
+#      when: "'base' not in snapper_list.stdout"
+#      notify: Update GRUB
+#      tags:
+#        - base
+
+#    - name: Ensure the /.snapshots mount point directory exists
+#      ansible.builtin.file:
+#        path: /.snapshots
+#        state: directory
+#        mode: '0750' # Recommended permission for snapper
+#      tags:
+#        - snapshotdir
+
+#    - name: Add .snapshots subvolume to fstab and mount it
+#      ansible.posix.mount:
+#        path: /.snapshots
+#        src: "UUID={{ root_uuid }}"
+#        fstype: btrfs
+#        opts: "rw,noatime,compress=zstd,subvol={{ snapshot_subvol }}"
+#        state: present #mounted # Adds to fstab AND mounts immediately
+#        dump: "0"
+#        passno: "0"
+#      vars:
+#        root_uuid: "68ec1088-41d3-42b1-907b-502f0fb62a0d"
+#        snapshot_subvol: "@snapshots"
+#      tags:
+#        - snapshotdir
