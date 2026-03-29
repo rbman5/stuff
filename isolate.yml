@@ -1,89 +1,86 @@
 
 
 
-- name: isolate cpus
-  hosts: all
-  tasks:
-    - name: Add CPU isolation params to GRUB
-      ansible.builtin.lineinfile:
-        path: /etc/default/grub
-        regexp: '^GRUB_CMDLINE_LINUX="((?!.*isolcpus).*)"$'
-        line: 'GRUB_CMDLINE_LINUX="\1 isolcpus=2-8 nohz_full=2-8 rcu_nocbs=2-8"'
-        backrefs: yes
-        backup: yes
-      register: isolate
-      become: true
-    
-    - name: Update GRUB
-      ansible.builtin.command: update-grub
-      when: isolate.changed
-      become: true
-    
-    - name: Reboot to apply CPU isolation
-      ansible.builtin.reboot:
-        reboot_timeout: 300
-        post_reboot_delay: 10
-      when: isolate.changed
-      become: true
-    
-    - name: Verify CPU isolation
-      ansible.builtin.command: cat /sys/devices/system/cpu/isolated
-      register: isolated_cpus
-    
-    - name: Show isolated CPUs
-      ansible.builtin.debug:
-        msg: "Isolated CPUs: {{ isolated_cpus.stdout }}"
+- name: Add CPU isolation params to GRUB
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX="((?!.*isolcpus).*)"$'
+    line: 'GRUB_CMDLINE_LINUX="\1 isolcpus=2-8 nohz_full=2-8 rcu_nocbs=2-8"'
+    backrefs: yes
+    backup: yes
+  register: isolate
+  become: true
 
-    - name: Create IRQ affinity script
-      ansible.builtin.copy:
-        dest: /usr/local/bin/set-irq-affinity.sh
-        mode: '0755'
-        content: |
-          #!/bin/bash
-          for irq in /proc/irq/*/smp_affinity; do
-              echo 3 > "$irq" 2>/dev/null
-          done
-          echo "IRQ affinity set to cores 0-1"
-        owner: root
-        group: root
-      become: true
-    
-    - name: Create IRQ affinity systemd service
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/irq-affinity.service
-        mode: '0644'
-        content: |
-          [Unit]
-          Description=Set IRQ affinity to cores 0-1
-          After=network.target
-    
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/local/bin/set-irq-affinity.sh
-          RemainAfterExit=yes
-    
-          [Install]
-          WantedBy=multi-user.target
-        owner: root
-        group: root
-      become: true
-    
-    - name: Reload systemd daemon
-      ansible.builtin.systemd:
-        daemon_reload: true
-      become: true
-    
-    - name: Enable and start IRQ affinity service
-      ansible.builtin.systemd:
-        name: irq-affinity
-        state: started
-        enabled: true
-      become: true
-    
-    - name: Verify IRQ affinity was applied
-      ansible.builtin.command: cat /proc/irq/0/smp_affinity
-      register: irq_check
-    
-    - name: Show IRQ affinity result
-      ansible.builtin.debug:
-        msg: "IRQ 0 affinity mask: {{ irq_check.stdout }}"
+- name: Update GRUB
+  ansible.builtin.command: update-grub
+  when: isolate.changed
+  become: true
+
+- name: Reboot to apply CPU isolation
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    post_reboot_delay: 10
+  when: isolate.changed
+  become: true
+
+- name: Verify CPU isolation
+  ansible.builtin.command: cat /sys/devices/system/cpu/isolated
+  register: isolated_cpus
+
+- name: Show isolated CPUs
+  ansible.builtin.debug:
+    msg: "Isolated CPUs: {{ isolated_cpus.stdout }}"
+
+- name: Create IRQ affinity script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/set-irq-affinity.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      for irq in /proc/irq/*/smp_affinity; do
+          echo 3 > "$irq" 2>/dev/null
+      done
+      echo "IRQ affinity set to cores 0-1"
+    owner: root
+    group: root
+  become: true
+
+- name: Create IRQ affinity systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/irq-affinity.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Set IRQ affinity to cores 0-1
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/set-irq-affinity.sh
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+  become: true
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: Enable and start IRQ affinity service
+  ansible.builtin.systemd:
+    name: irq-affinity
+    state: started
+    enabled: true
+  become: true
+
+- name: Verify IRQ affinity was applied
+  ansible.builtin.command: cat /proc/irq/0/smp_affinity
+  register: irq_check
+
+- name: Show IRQ affinity result
+  ansible.builtin.debug:
+    msg: "IRQ 0 affinity mask: {{ irq_check.stdout }}"

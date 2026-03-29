@@ -42,6 +42,9 @@
       ansible.builtin.setup:
         filter: ansible_date_time
 
+    - name: isolate
+      include_tasks: isolate.yml
+
     - name: Disable swap for current session
       ansible.builtin.command: swapoff -a
       when: ansible_swaptotal_mb > 0
@@ -84,24 +87,24 @@
         enabled: yes
         state: started
 
-#    - name: Install Snapper
-#      ansible.builtin.apt:
-#        name: snapper
-#        state: present
-#        update_cache: yes
-#      become: true
-#
-#    - name: Stop and disable Snapper systemd timers
-#      ansible.builtin.systemd_service:
-#        name: "{{ item }}"
-#        state: stopped
-#        enabled: false
-#      loop:
-#        - snapper-timeline.timer
-#        - snapper-cleanup.timer
-#        - snapper-boot.timer
-#      become: true
-#      ignore_errors: true # Prevents failure if a specific timer doesn't exist yet
+    - name: Install Snapper
+      ansible.builtin.apt:
+        name: snapper
+        state: present
+        update_cache: yes
+      become: true
+
+    - name: Stop and disable Snapper systemd timers
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop:
+        - snapper-timeline.timer
+        - snapper-cleanup.timer
+        - snapper-boot.timer
+      become: true
+      ignore_errors: true # Prevents failure if a specific timer doesn't exist yet
 
     - name: Disable Snapper APT hooks (Pre/Post snapshots)
       ansible.builtin.file:
@@ -137,40 +140,87 @@
       tags:
         - quota
 
+    
+#    - name: Backup fstab
+#      ansible.builtin.copy:
+#        src: /etc/fstab
+#        dest: /etc/fstab.bak
+#        remote_src: true
+#      become: true
+#    
+#    - name: Update root mount in fstab
+#      ansible.builtin.lineinfile:
+#        path: /etc/fstab
+#        regexp: '^/dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a / btrfs defaults 0 1'
+#        line: '/dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a / btrfs  defaults,noatime,discard=async,compress=zstd,subvol=@           0 0'
+#        backup: yes
+#      register: fstab
+#      become: true
+#    
+#    - name: Add snapshots mount to fstab
+#      ansible.builtin.lineinfile:
+#        path: /etc/fstab
+#        line: '/dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a /.snapshots  btrfs  defaults,noatime,discard=async,compress=zstd,subvol=@snapshots  0 0'
+#      become: true
+    
+    - name: Ensure GRUB_DISABLE_OS_PROBER is set
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^#?GRUB_DISABLE_OS_PROBER='
+        line: 'GRUB_DISABLE_OS_PROBER=false'
+      become: true
+    
+    - name: Update initramfs
+      ansible.builtin.command: update-initramfs -u -k all
+      become: true
+
+    - name: Update GRUB
+      ansible.builtin.command: update-grub
+      become: true
+    
+#    - name: Reboot to apply fstab changes
+#      ansible.builtin.reboot:
+#        reboot_timeout: 300
+#        post_reboot_delay: 10
+#      when: fstab.changed
+#      become: true
+
+
+
 #    - name: Create Snapper config for root partition
 #      ansible.builtin.command:
 #        cmd: snapper -c root create-config /
 #        creates: /etc/snapper/configs/root
 #      become: true
 #
+#
+#    - name: Ensure snapshots directory exists
+#      ansible.builtin.file:
+#        path: /.snapshots
+#        state: directory
+#        mode: '0755'
+#      become: true
+#      tags:
+#        - base
 
-    - name: Ensure snapshots directory exists
-      ansible.builtin.file:
-        path: /.snapshots
-        state: directory
-        mode: '0755'
-      become: true
-      tags:
-        - base
-
-    - name: Take read-only btrfs snapshot of root volume
-      ansible.builtin.command: "btrfs subvolume snapshot -r / /.snapshots/root-{{ snapshot_date }}" 
-      become: true
-      notify: Update GRUB
-      vars:
-        snapshot_date: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
-      tags:
-        - base
-
-    - name: Take read-only btrfs snapshot of root volume
-      ansible.builtin.command: "btrfs subvolume snapshot -r / /.snapshots/root-{{ snapshot_date }}"
-      become: true
-      notify: Update GRUB
-      vars:
-        snapshot_date: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
-      tags:
-        - never
-        - snap
+#    - name: Take read-only btrfs snapshot of root volume
+#      ansible.builtin.command: "btrfs subvolume snapshot -r / /.snapshots/root-{{ snapshot_date }}" 
+#      become: true
+#      notify: Update GRUB
+#      vars:
+#        snapshot_date: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
+#      tags:
+#        - base
+#
+#    - name: Take read-only btrfs snapshot of root volume
+#      ansible.builtin.command: "btrfs subvolume snapshot -r / /.snapshots/root-{{ snapshot_date }}"
+#      become: true
+#      notify: Update GRUB
+#      vars:
+#        snapshot_date: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
+#      tags:
+#        - never
+#        - snap
 
 #    - name: Check if "base" snapshot already exists
 #      ansible.builtin.command: snapper -c root list
@@ -181,8 +231,10 @@
 #
 #    - name: Create "base" snapshot if missing
 #      ansible.builtin.command:
-#        cmd: snapper -c root create --description "base" --type single
+#        cmd: snapper -c root create --description "root-base-{{ snapshot_date }}" --type single
 #      when: "'base' not in snapper_list.stdout"
+#      vars:
+#        snapshot_date: "{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
 #      notify: Update GRUB
 #      tags:
 #        - base
@@ -194,7 +246,7 @@
 #        mode: '0750' # Recommended permission for snapper
 #      tags:
 #        - snapshotdir
-
+#
 #    - name: Add .snapshots subvolume to fstab and mount it
 #      ansible.posix.mount:
 #        path: /.snapshots
