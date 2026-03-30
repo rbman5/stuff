@@ -12,6 +12,25 @@
       ansible.builtin.command: snapper list
       register: snapper_list
 
+    - name: Get btrfs filesystem usage /
+      ansible.builtin.command: btrfs filesystem usage /
+      register: fs_usage
+
+    - name: Install btrfs-compsize
+      ansible.builtin.apt:
+        name: btrfs-compsize
+        state: present
+      become: true
+    
+    - name: Run compsize
+      ansible.builtin.command: compsize -x /
+      register: compsize_output
+      become: true
+    
+    - name: Show compsize output
+      ansible.builtin.debug:
+        msg: "{{ compsize_output.stdout_lines }}"
+
     - name: Currently booted into
       ansible.builtin.debug:
         msg: "{{ rootflags.stdout }}"
