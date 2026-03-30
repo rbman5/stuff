@@ -5,7 +5,7 @@
   ansible.builtin.lineinfile:
     path: /etc/default/grub
     regexp: '^GRUB_CMDLINE_LINUX="((?!.*isolcpus).*)"$'
-    line: 'GRUB_CMDLINE_LINUX="\1 isolcpus=2-8 nohz_full=2-8 rcu_nocbs=2-8"'
+    line: 'GRUB_CMDLINE_LINUX="\1 isolcpus=2-3 nohz_full=2-3 rcu_nocbs=2-3"'
     backrefs: yes
     backup: yes
   register: isolate
