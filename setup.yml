@@ -118,6 +118,7 @@
       ansible.builtin.systemd_service:
         name: "{{ item }}"
         state: stopped
+        masked: true
         enabled: false
       loop:
         - snapper-timeline.timer
