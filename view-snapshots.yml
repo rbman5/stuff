@@ -38,3 +38,4 @@
     - name: Available snapshots
       ansible.builtin.debug:
         msg: "{{ snapper_list.stdout_lines }}"
+
