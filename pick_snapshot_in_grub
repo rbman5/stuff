@@ -1,0 +1,8 @@
+when you pick a snapshot via grub menu run these cmds after boot
+
+
+sudo mount -o remount,rw /
+sudo btrfs property set / ro false
+sudo btrfs subvolume list /             # get the id of the snapshot you chose, compare to snapper -c root list to find the right one
+sudo btrfs subvolume set-default 259 /
+
