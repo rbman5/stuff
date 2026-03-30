@@ -1,0 +1,14 @@
+# snapshot.yml
+- hosts: all
+  become: true
+  vars:
+    snapshot_description: "pre-update-{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
+
+  tasks:
+    - name: Take snapshot
+      ansible.builtin.command: snapper -c root create --description "{{ snapshot_description }}" --print-number
+      register: snapshot_number
+
+    - name: Show snapshot number
+      ansible.builtin.debug:
+        msg: "Snapshot number: {{ snapshot_number.stdout }} description: {{ snapshot_description }}"
