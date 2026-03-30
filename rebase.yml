@@ -1,0 +1,85 @@
+# rebase_to_at.yml
+- hosts: all
+  become: true
+  vars:
+    btrfs_device: /dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a
+
+  tasks:
+
+    - name: Check current btrfs default subvolume
+      ansible.builtin.command: btrfs subvolume get-default /
+      register: current_default
+
+    - name: Check if already running on @
+      ansible.builtin.command: findmnt -n -o OPTIONS /
+      register: root_options
+
+    - name: Set fact if root is already @
+      ansible.builtin.set_fact:
+        root_is_at: "{{ 'subvol=/@' in root_options.stdout and root_options.stdout | regex_search('subvolid=256') is not none }}"
+
+    - name: Show current state
+      ansible.builtin.debug:
+        msg: "Current default: {{ current_default.stdout }} | Root is @: {{ root_is_at }}"
+
+    - name: Mount top level btrfs volume
+      ansible.builtin.command: mount -o subvolid=5 {{ btrfs_device }} /mnt
+      when: not root_is_at
+
+    - name: Check if @ exists at top level
+      ansible.builtin.command: btrfs subvolume list /mnt
+      register: top_level_subvols
+      when: not root_is_at
+
+    - name: Delete existing @ subvolume
+      ansible.builtin.command: btrfs subvolume delete /mnt/@
+      when:
+        - not root_is_at
+        - top_level_subvols.stdout | regex_search(' path @$', multiline=True) is not none
+
+    - name: Snapshot current running system into @
+      ansible.builtin.command: btrfs subvolume snapshot / /mnt/@
+      when: not root_is_at
+
+    - name: Get ID of new @
+      ansible.builtin.shell: |
+        btrfs subvolume list /mnt | awk '/ path @$/{print $2}'
+      register: at_id
+      when: not root_is_at
+
+    - name: Set @ as btrfs default
+      ansible.builtin.command: btrfs subvolume set-default {{ at_id.stdout }} /mnt
+      when: not root_is_at
+
+    - name: Unmount top level
+      ansible.builtin.command: umount /mnt
+      when: not root_is_at
+
+    - name: Update GRUB
+      ansible.builtin.command: update-grub
+      when: not root_is_at
+
+    - name: Update root entry in fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '{{ btrfs_device }}\s+/\s+btrfs'
+        line: '{{ btrfs_device }}  /            btrfs  defaults,noatime,discard=async,compress=zstd,subvol=@  0 0'
+
+    - name: Reboot into @
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        post_reboot_delay: 15
+      when: not root_is_at
+
+    - name: Verify root is mounted as @
+      ansible.builtin.command: findmnt -n -o OPTIONS /
+      register: root_options_post
+      failed_when: "'subvol=/@' not in root_options_post.stdout"
+
+    - name: Verify btrfs default is @
+      ansible.builtin.command: btrfs subvolume get-default /
+      register: final_default
+
+    - name: Show final state
+      ansible.builtin.debug:
+        msg: "{{ final_default.stdout }}"
