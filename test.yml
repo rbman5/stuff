@@ -138,6 +138,7 @@
       apt:
         name: sudo-rs
         state: latest
+      check_mode: true
       register: testing
       failed_when: not testing.changed
 
