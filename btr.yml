@@ -112,14 +112,20 @@
       failed_when: "'subvol=/@' not in root_options_post.stdout"
 
     # ── Setup /.snapshots mount point ─────────────────────────────
-#    - name: Check if .snapshots is a btrfs subvolume
-#      ansible.builtin.command: btrfs subvolume show /.snapshots
-#      register: snapshots_is_subvol
-#      ignore_errors: true
-#
-#    - name: Delete .snapshots subvolume if it exists inside @
-#      ansible.builtin.command: btrfs subvolume delete /.snapshots
-#      when: snapshots_is_subvol.rc == 0
+    - name: Check if .snapshots is a btrfs subvolume
+      ansible.builtin.command: btrfs subvolume show /.snapshots
+      register: snapshots_is_subvol
+      ignore_errors: true
+
+    - name: Delete .snapshots subvolume if it exists inside @
+      ansible.builtin.command: umount /.snapshots
+      when: snapshots_is_subvol.rc == 0
+
+    - name: Remove .snapshots as plain directory
+      ansible.builtin.file:
+        path: /.snapshots
+        state: absent
+        mode: '0750'
 
     - name: Check if snapper config already exists
       ansible.builtin.stat:

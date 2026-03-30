@@ -42,6 +42,26 @@
       ansible.builtin.setup:
         filter: ansible_date_time
 
+    - name: Unmount /root
+      ansible.posix.mount:
+        path: /root
+        state: unmounted
+      become: true
+    
+    - name: Remove /root from fstab
+      ansible.posix.mount:
+        path: /root
+        state: absent
+      become: true
+    
+    - name: Remove roothome_lv logical volume
+      community.general.lvol:
+        vg: vg00
+        lv: roothome_lv
+        state: absent
+        force: true
+      become: true
+
     - name: isolate
       include_tasks: isolate.yml
 
