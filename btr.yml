@@ -90,6 +90,13 @@
       when: not at_exists or not at_snapshots_exists
 
     # ── Update grub and initramfs ─────────────────────────────────
+
+    - name: Comment out GRUB_BTRFS_IGNORE_SPECIFIC_PATH
+      ansible.builtin.replace:
+        path: /etc/default/grub-btrfs/config  
+        regexp: '^(GRUB_BTRFS_IGNORE_SPECIFIC_PATH=\("@"\))$'
+        replace: '# \1'
+
     - name: Update initramfs
       ansible.builtin.command: update-initramfs -u -k all
       when: not root_is_at

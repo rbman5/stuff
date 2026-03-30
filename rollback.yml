@@ -1,25 +1,11 @@
----
-
-
+# rollback.yml
 - hosts: all
   become: true
   vars:
-    snapshot_description: "pre-update-{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
     rollback_snapshot: "1"
     btrfs_device: /dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a
+
   tasks:
-    - name: Take snapshot
-      ansible.builtin.command: snapper -c root create --description "{{ snapshot_description }}" --print-number
-      register: snapshot_number
-
-    - name: Show snapshot number
-      ansible.builtin.debug:
-        msg: "Snapshot number: {{ snapshot_number.stdout }} description: {{ snapshot_description }}"
-
-    - name: update sudo-rs
-      apt:
-        name: sudo-rs
-        state: latest
 
     - name: Fail if no snapshot number provided
       ansible.builtin.fail:
@@ -51,7 +37,6 @@
       register: new_default_id
       tags:
         - fstab
-        - grub
 
     - name: Get new default subvolume path
       ansible.builtin.shell: |
@@ -59,7 +44,6 @@
       register: new_default_path
       tags:
         - fstab
-        - grub
 
     - name: Show new default subvolume
       ansible.builtin.debug:
@@ -73,8 +57,6 @@
         regexp: 'rootflags=subvol=\S+'
         replace: 'rootflags=subvol={{ new_default_path.stdout }}'
       become: true
-      tags: 
-        - grub
 
     - name: Update root entry in fstab
       ansible.builtin.lineinfile:
@@ -133,11 +115,8 @@
 
     - name: Verify fstab root entry is correct
       ansible.builtin.command: grep root_lv /etc/fstab
-      
-    - name: update sudo-rs
-      apt:
-        name: sudo-rs
-        state: latest
-      register: testing
-      failed_when: not testing.changed
+      register: fstab_check
 
+    - name: Show fstab entries
+      ansible.builtin.debug:
+        msg: "{{ fstab_check.stdout_lines }}"
