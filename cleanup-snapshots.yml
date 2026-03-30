@@ -1,0 +1,20 @@
+
+- name: cleanup btrfs snapshots
+  hosts: all
+  tasks:
+    - name: Delete snapshots older than 7 days
+      ansible.builtin.shell: |
+        snapper list --columns number,date | tail -n +2 | while read num date time zone; do
+          snapshot_date=$(date -d "$date $time" +%s)
+          cutoff=$(date -d "7 days ago" +%s)
+          if [ "$snapshot_date" -lt "$cutoff" ]; then
+            snapper delete $num
+            echo "Deleted snapshot $num ($date $time)"
+          fi
+        done
+      register: deleted_snapshots
+      become: true
+    
+    - name: Show deleted snapshots
+      ansible.builtin.debug:
+        msg: "{{ deleted_snapshots.stdout_lines }}"
