@@ -1,0 +1,21 @@
+# snapshot_info.yml
+- hosts: all
+  become: true
+
+  tasks:
+
+    - name: Get rootflags
+      ansible.builtin.shell: grep -o 'rootflags=\S*' /proc/cmdline
+      register: rootflags
+
+    - name: Get snapper list
+      ansible.builtin.command: snapper list
+      register: snapper_list
+
+    - name: Currently booted into
+      ansible.builtin.debug:
+        msg: "{{ rootflags.stdout }}"
+
+    - name: Available snapshots
+      ansible.builtin.debug:
+        msg: "{{ snapper_list.stdout_lines }}"
