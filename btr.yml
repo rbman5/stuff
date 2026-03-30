@@ -6,7 +6,7 @@
 
   tasks:
 
-    # ── Install packages ──────────────────────────────────────────
+    # ──V Install packages ──────────────────────────────────────────
     - name: Install snapper and grub-btrfs
       ansible.builtin.apt:
         name:
@@ -14,6 +14,18 @@
           - inotify-tools
         state: present
         update_cache: true
+
+    - name: Stop and disable Snapper systemd timers
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop:
+        - snapper-timeline.timer
+        - snapper-cleanup.timer
+        - snapper-boot.timer
+      become: true
+      ignore_errors: true # Prevents failure if a specific timer doesn't exist yet
 
     # ── Check current state ───────────────────────────────────────
     - name: Get current btrfs subvolume list
@@ -36,6 +48,23 @@
     - name: Set fact for root mounted as @
       ansible.builtin.set_fact:
         root_is_at: "{{ 'subvol=/@' in root_options.stdout }}"
+
+    # ── Update fstab ──────────────────────────────────────────────
+    - name: Update root entry in fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '{{ btrfs_device }}\s+/\s+'
+        line: '{{ btrfs_device }}  /            btrfs  defaults,noatime,discard=async,compress=zstd,subvol=@           0 0'
+      tags:
+        - fstab
+
+    - name: Add @snapshots to fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '{{ btrfs_device }}\s+/.snapshots\s+'
+        line: '{{ btrfs_device }}  /.snapshots  btrfs  defaults,noatime,discard=async,compress=zstd,subvol=@snapshots  0 0'
+      tags:
+        - fstab
 
     # ── Create subvolume layout ───────────────────────────────────
     - name: Mount top level btrfs volume
@@ -60,19 +89,6 @@
       ansible.builtin.command: umount /mnt
       when: not at_exists or not at_snapshots_exists
 
-    # ── Update fstab ──────────────────────────────────────────────
-    - name: Update root entry in fstab
-      ansible.builtin.lineinfile:
-        path: /etc/fstab
-        regexp: '{{ btrfs_device }}\s+/\s+'
-        line: '{{ btrfs_device }}  /            btrfs  defaults,noatime,discard=async,compress=zstd,subvol=@           0 0'
-
-    - name: Add @snapshots to fstab
-      ansible.builtin.lineinfile:
-        path: /etc/fstab
-        regexp: '{{ btrfs_device }}\s+/.snapshots\s+'
-        line: '{{ btrfs_device }}  /.snapshots  btrfs  defaults,noatime,discard=async,compress=zstd,subvol=@snapshots  0 0'
-
     # ── Update grub and initramfs ─────────────────────────────────
     - name: Update initramfs
       ansible.builtin.command: update-initramfs -u -k all
@@ -96,25 +112,19 @@
       failed_when: "'subvol=/@' not in root_options_post.stdout"
 
     # ── Setup /.snapshots mount point ─────────────────────────────
-    - name: Check if .snapshots is a btrfs subvolume
-      ansible.builtin.command: btrfs subvolume show /.snapshots
-      register: snapshots_is_subvol
-      ignore_errors: true
-
-    - name: Delete .snapshots subvolume if it exists inside @
-      ansible.builtin.command: btrfs subvolume delete /.snapshots
-      when: snapshots_is_subvol.rc == 0
+#    - name: Check if .snapshots is a btrfs subvolume
+#      ansible.builtin.command: btrfs subvolume show /.snapshots
+#      register: snapshots_is_subvol
+#      ignore_errors: true
+#
+#    - name: Delete .snapshots subvolume if it exists inside @
+#      ansible.builtin.command: btrfs subvolume delete /.snapshots
+#      when: snapshots_is_subvol.rc == 0
 
     - name: Check if snapper config already exists
       ansible.builtin.stat:
         path: /etc/snapper/configs/root
       register: snapper_config
-
-    - name: Remove .snapshots directory if snapper config does not exist
-      ansible.builtin.file:
-        path: /.snapshots
-        state: absent
-      when: not snapper_config.stat.exists
 
     - name: Create snapper root config
       ansible.builtin.command: snapper -c root create-config /
@@ -139,6 +149,21 @@
         name: grub-btrfsd
         state: started
         enabled: true
+
+    - name: Check if system is UEFI
+      ansible.builtin.stat:
+        path: /sys/firmware/efi
+      register: efi_check
+
+    - name: Install GRUB for BIOS
+      ansible.builtin.command: grub-install /dev/vda
+      become: true
+      when: not efi_check.stat.exists
+    
+    - name: Install GRUB for UEFI
+      ansible.builtin.command: grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu
+      become: true
+      when: efi_check.stat.exists
 
     - name: Update GRUB to pick up snapper entries
       ansible.builtin.command: update-grub
