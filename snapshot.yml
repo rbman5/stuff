@@ -5,6 +5,13 @@
     snapshot_description: "pre-update-{{ ansible_date_time.date }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
 
   tasks:
+    - name: Backup EFI partition before upgrade
+      ansible.builtin.archive:
+        path: /boot/efi
+        dest: /root/efi-backup-{{ snapshot_description }}.tar.gz
+        format: gz
+      become: true
+
     - name: Take snapshot
       ansible.builtin.command: snapper -c root create --description "{{ snapshot_description }}" --print-number
       register: snapshot_number
