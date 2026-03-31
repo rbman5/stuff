@@ -3,7 +3,8 @@
   become: true
   vars:
     rollback_snapshot: "1"
-    btrfs_device: /dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a
+    #btrfs_device: /dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a
+    btrfs_device: /dev/disk/by-id/dm-uuid-LVM-ysMwAc6vQtXpkKtN8yeMleV0OblDrp3b8xeVnW0aiw3mrOUxQ3WK2EfCel1cCiK4 
 
   tasks:
 
@@ -73,6 +74,17 @@
         line: '{{ btrfs_device }}  /.snapshots  btrfs  defaults,noatime,discard=async,compress=zstd,subvol=@snapshots  0 0'
       tags:
         - fstab
+
+    - name: Find latest EFI backup
+      ansible.builtin.shell: ls -t /root/efi-backup-*.tar.gz | head -1
+      register: latest_efi_backup
+      become: true
+    
+    - name: Restore EFI partition from backup
+      ansible.builtin.shell: |
+        tar -xzf {{ latest_efi_backup.stdout }} -C /
+      when: latest_efi_backup.stdout != ""
+      become: true
 
     - name: Check if UEFI
       ansible.builtin.stat:

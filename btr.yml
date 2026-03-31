@@ -2,7 +2,8 @@
 - hosts: all
   become: true
   vars:
-    btrfs_device: /dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a
+    #btrfs_device: /dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a
+    btrfs_device: /dev/disk/by-id/dm-uuid-LVM-ysMwAc6vQtXpkKtN8yeMleV0OblDrp3b8xeVnW0aiw3mrOUxQ3WK2EfCel1cCiK4 
 
   tasks:
 

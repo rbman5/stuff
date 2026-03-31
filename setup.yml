@@ -2,7 +2,7 @@
 
 
 - name: Install and Configure grub-btrfs on Ubuntu
-  hosts: u26
+  hosts: all
   become: true
   handlers:
     - name: Update GRUB
