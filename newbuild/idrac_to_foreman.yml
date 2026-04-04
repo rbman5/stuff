@@ -1,0 +1,121 @@
+---
+# tasks/idrac_to_foreman.yml
+
+# iDRAC
+#idrac_host:     "192.168.1.10"   # iDRAC IP or hostname
+#idrac_user:     "root"
+#idrac_password: "calvin"          # store in vault!
+#
+## Foreman
+#foreman_host:              "foreman.example.com"
+#foreman_user:              "admin"
+#foreman_password:          "secret"   # store in vault!
+#foreman_environment_id:    1
+#foreman_architecture_id:   1          # 1 = x86_64
+#foreman_domain_id:         1
+#foreman_subnet_id:         1
+#foreman_os_id:             1
+#foreman_location_id:       1
+#foreman_org_id:            1
+#foreman_hostgroup_id:      1
+#host_ip:                   "10.0.0.50"
+
+# ──────────────────────────────────────────────
+# 1. Gather iDRAC system info via Redfish API
+# ──────────────────────────────────────────────
+- name: Get iDRAC system information
+  ansible.builtin.uri:
+    url: "https://{{ idrac_host }}/redfish/v1/Systems/System.Embedded.1"
+    method: GET
+    user: "{{ idrac_user }}"
+    password: "{{ idrac_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    return_content: true
+    headers:
+      Accept: "application/json"
+  register: idrac_system_info
+  delegate_to: localhost
+
+- name: Get iDRAC network interfaces (NICs)
+  ansible.builtin.uri:
+    url: "https://{{ idrac_host }}/redfish/v1/Systems/System.Embedded.1/EthernetInterfaces"
+    method: GET
+    user: "{{ idrac_user }}"
+    password: "{{ idrac_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    return_content: true
+    headers:
+      Accept: "application/json"
+  register: idrac_nics
+  delegate_to: localhost
+
+- name: Get details of the first NIC (PXE/primary)
+  ansible.builtin.uri:
+    url: "https://{{ idrac_host }}{{ idrac_nics.json['Members'][0]['@odata.id'] }}"
+    method: GET
+    user: "{{ idrac_user }}"
+    password: "{{ idrac_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    return_content: true
+    headers:
+      Accept: "application/json"
+  register: idrac_nic_detail
+  delegate_to: localhost
+
+- name: Set facts from iDRAC data
+  ansible.builtin.set_fact:
+    server_mac:    "{{ idrac_nic_detail.json['MACAddress'] }}"
+    server_model:  "{{ idrac_system_info.json['Model'] }}"
+    server_serial: "{{ idrac_system_info.json['SerialNumber'] }}"
+
+- name: Debug gathered iDRAC facts
+  ansible.builtin.debug:
+    msg:
+      - "MAC Address : {{ server_mac }}"
+      - "Model       : {{ server_model }}"
+      - "Serial      : {{ server_serial }}"
+
+# ──────────────────────────────────────────────
+# 2. Create the host in Foreman
+# ──────────────────────────────────────────────
+- name: Create host entry in Foreman
+  ansible.builtin.uri:
+    url: "https://{{ foreman_host }}/api/hosts"
+    method: POST
+    user: "{{ foreman_user }}"
+    password: "{{ foreman_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    status_code: [200, 201]
+    headers:
+      Content-Type: "application/json"
+      Accept:       "application/json"
+    body_format: json
+    body:
+      host:
+        name:               "{{ inventory_hostname }}"
+        mac:                "{{ server_mac }}"
+        ip:                 "{{ host_ip }}"
+        environment_id:     "{{ foreman_environment_id }}"
+        architecture_id:    "{{ foreman_architecture_id }}"
+        domain_id:          "{{ foreman_domain_id }}"
+        subnet_id:          "{{ foreman_subnet_id }}"
+        operatingsystem_id: "{{ foreman_os_id }}"
+        location_id:        "{{ foreman_location_id }}"
+        organization_id:    "{{ foreman_org_id }}"
+        hostgroup_id:       "{{ foreman_hostgroup_id }}"
+        build:              true       # set false if not PXE provisioning
+        managed:            true
+        comment:            "Model: {{ server_model }} | Serial: {{ server_serial }}"
+  register: foreman_host_result
+  delegate_to: localhost
+
+- name: Show Foreman host creation result
+  ansible.builtin.debug:
+    msg: "Host '{{ inventory_hostname }}' created in Foreman with ID: {{ foreman_host_result.json['id'] }}"
+
+
+

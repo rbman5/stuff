@@ -1,0 +1,8 @@
+---
+- name: Reboot host
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ patch_reboot_timeout }}"
+    pre_reboot_delay: 5
+    post_reboot_delay: "{{ patch_reboot_delay }}"
+    msg: "Ansible triggered reboot for patching"
+  listen: "reboot for patches"

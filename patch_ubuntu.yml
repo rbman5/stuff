@@ -1,0 +1,17 @@
+---
+- name: Patch Ubuntu servers via anuka sources
+  hosts: ubuntu_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: patch_ubuntu
+      vars:
+        patch_source_files:
+          - anuka.list
+          - anuka-local.list
+        patch_reboot_enabled:  true
+        patch_force_reboot:    false
+        patch_upgrade_type:    "safe-upgrade"
+        patch_max_iterations:  3
+        patch_verify_clean:    true

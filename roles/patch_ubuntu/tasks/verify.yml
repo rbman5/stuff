@@ -1,0 +1,63 @@
+---
+- name: Final apt cache refresh
+  ansible.builtin.apt:
+    update_cache:     true
+    cache_valid_time: 0
+
+- name: Final simulate to confirm no patches remain
+  ansible.builtin.command: >
+    apt-get
+    -o Dir::Etc::sourcelist="{{ patch_sources_dir }}"
+    -o Dir::Etc::sourceparts="{{ patch_sources_dir }}"
+    --just-print
+    {{ patch_upgrade_type }}
+  register:     apt_final_simulate
+  changed_when: false
+  failed_when:  apt_final_simulate.rc not in [0, 1]
+
+- name: Count any remaining packages
+  ansible.builtin.set_fact:
+    _final_pending: >-
+      {{
+        apt_final_simulate.stdout_lines
+        | select('match', '^Inst ')
+        | list
+        | length
+        | int
+      }}
+
+- name: Check if reboot flag still set after all cycles
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: _final_reboot_flag
+
+- name: Patching summary report
+  ansible.builtin.debug:
+    msg:
+      - "════════════════════════════════════════"
+      - " Patching Summary — {{ inventory_hostname }}"
+      - "════════════════════════════════════════"
+      - " Cycles run         : {{ _patch_iteration }}"
+      - " Reboot performed   : {{ _patch_reboot_performed }}"
+      - " Packages remaining : {{ _final_pending }}"
+      - " Reboot still needed: {{ _final_reboot_flag.stat.exists }}"
+      - " Sources used       : {{ patch_source_files | join(', ') }}"
+      - "════════════════════════════════════════"
+
+- name: Warn if reboot still required but reboots are disabled
+  ansible.builtin.debug:
+    msg: >
+      WARNING: {{ inventory_hostname }} still has a pending reboot but
+      patch_reboot_enabled=false. A manual reboot is required.
+  when:
+    - _final_reboot_flag.stat.exists
+    - not patch_reboot_enabled
+
+- name: Fail if packages remain and verify is enabled
+  ansible.builtin.fail:
+    msg: >
+      {{ _final_pending }} package(s) still pending on {{ inventory_hostname }}
+      after {{ _patch_iteration }} cycle(s). Manual intervention required.
+  when:
+    - patch_verify_clean
+    - _final_pending | int > 0

@@ -1,0 +1,83 @@
+---
+# tasks/wait_for_bmc.yml
+#
+
+#bmc_candidates:
+#  - "192.168.1.10"
+#  - "192.168.1.11"
+#  - "idrac-host-a.example.com"
+#  - "idrac-host-b.example.com"
+
+- name: Try to reach BMC endpoints and use the first one that responds
+  block:
+
+    # ──────────────────────────────────────────────
+    # 1. Attempt to ping all candidate endpoints
+    #    in parallel (async), don't fail on error
+    # ──────────────────────────────────────────────
+    - name: Wait for each BMC endpoint to respond
+      ansible.builtin.wait_for:
+        host:    "{{ item }}"
+        port:    443
+        timeout: 300          # wait up to 5 min per endpoint
+        sleep:   10           # probe every 10 seconds
+      loop: "{{ bmc_candidates }}"
+      register: bmc_probe_results
+      ignore_errors: true
+      async:  310             # slightly longer than timeout
+      poll:   0               # fire-and-forget (parallel)
+      loop_control:
+        label: "{{ item }}"
+
+    # ──────────────────────────────────────────────
+    # 2. Collect the async jobs
+    # ──────────────────────────────────────────────
+    - name: Check async probe statuses
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop:         "{{ bmc_probe_results.results }}"
+      register:     bmc_async_results
+      until:        bmc_async_results.finished
+      retries:      31        # 31 × 10 s = ~5 min ceiling
+      delay:        10
+      ignore_errors: true
+      loop_control:
+        label: "{{ item.item }}"
+
+    # ──────────────────────────────────────────────
+    # 3. Pick the first endpoint that succeeded
+    # ──────────────────────────────────────────────
+    - name: Build list of reachable BMC endpoints
+      ansible.builtin.set_fact:
+        reachable_bmcs: >-
+          {{
+            bmc_async_results.results
+            | selectattr('failed', 'equalto', false)
+            | map(attribute='item.item')
+            | list
+          }}
+
+    - name: Fail if no BMC endpoint became reachable
+      ansible.builtin.fail:
+        msg: >
+          None of the candidate BMC endpoints responded within the timeout:
+          {{ bmc_candidates | join(', ') }}
+      when: reachable_bmcs | length == 0
+
+    - name: Set bmc to the first reachable endpoint
+      ansible.builtin.set_fact:
+        bmc: "{{ reachable_bmcs[0] }}"
+
+    - name: Report which BMC won
+      ansible.builtin.debug:
+        msg: "BMC endpoint selected: {{ bmc }} (responded first out of {{ bmc_candidates | join(', ') }})"
+
+- name: Use the winning BMC endpoint
+  ansible.builtin.uri:
+    url:            "https://{{ bmc }}/redfish/v1/Systems/System.Embedded.1"
+    method:         GET
+    user:           "{{ idrac_user }}"
+    password:       "{{ idrac_password }}"
+    validate_certs: false
+    force_basic_auth: true
+  delegate_to: localhost

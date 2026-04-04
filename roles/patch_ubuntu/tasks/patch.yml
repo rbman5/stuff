@@ -1,0 +1,140 @@
+---
+- name: "Patch iteration {{ _patch_iteration | int + 1 }} of {{ patch_max_iterations }}"
+  ansible.builtin.debug:
+    msg: "Starting patch cycle {{ _patch_iteration | int + 1 }}"
+
+- name: Simulate upgrade to find available packages
+  ansible.builtin.command: >
+    apt-get
+    -o Dir::Etc::sourcelist="{{ patch_sources_dir }}"
+    -o Dir::Etc::sourceparts="{{ patch_sources_dir }}"
+    --just-print
+    {{ patch_upgrade_type }}
+  register:     apt_simulate
+  changed_when: false
+  failed_when:  apt_simulate.rc not in [0, 1]
+
+- name: Parse count of packages to upgrade
+  ansible.builtin.set_fact:
+    _packages_pending: >-
+      {{
+        apt_simulate.stdout_lines
+        | select('match', '^Inst ')
+        | list
+        | length
+        | int
+      }}
+
+- name: Show pending package count
+  ansible.builtin.debug:
+    msg: "Packages pending upgrade: {{ _packages_pending }}"
+
+- name: Apply patches from approved sources
+  ansible.builtin.apt:
+    upgrade:      "{{ patch_upgrade_type }}"
+    update_cache: false
+    only_upgrade: true
+    dpkg_options: "force-confold,force-confdef"
+  register: apt_upgrade_result
+  when:     _packages_pending | int > 0
+
+- name: Autoremove orphaned packages
+  ansible.builtin.apt:
+    autoremove: true
+    purge:      true
+  when:
+    - patch_autoremove
+    - apt_upgrade_result is not skipped
+
+- name: Check for reboot-required flag
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: _reboot_required_flag
+
+- name: Check reboot-required package list
+  ansible.builtin.command: cat /var/run/reboot-required.pkgs
+  register:     _reboot_required_pkgs
+  changed_when: false
+  failed_when:  false
+  when:         _reboot_required_flag.stat.exists
+
+- name: Show packages that triggered reboot requirement
+  ansible.builtin.debug:
+    msg: "Reboot required by: {{ _reboot_required_pkgs.stdout_lines | default([]) }}"
+  when: _reboot_required_flag.stat.exists
+
+- name: Set reboot decision fact
+  ansible.builtin.set_fact:
+    _should_reboot: >-
+      {{
+        (patch_reboot_enabled and _reboot_required_flag.stat.exists)
+        or
+        (patch_reboot_enabled and patch_force_reboot)
+      }}
+
+- name: Show reboot decision
+  ansible.builtin.debug:
+    msg: >
+      Reboot decision: {{ _should_reboot }}
+      (reboot_enabled={{ patch_reboot_enabled }},
+       flag_exists={{ _reboot_required_flag.stat.exists }},
+       force={{ patch_force_reboot }})
+
+- name: Reboot the host
+  ansible.builtin.reboot:
+    reboot_timeout:    "{{ patch_reboot_timeout }}"
+    pre_reboot_delay:  5
+    post_reboot_delay: "{{ patch_reboot_delay }}"
+    msg:               "Ansible patching reboot — iteration {{ _patch_iteration | int + 1 }}"
+  when:     _should_reboot
+  register: _reboot_result
+
+- name: Record that a reboot was performed
+  ansible.builtin.set_fact:
+    _patch_reboot_performed: true
+  when: _should_reboot
+
+- name: Refresh apt cache post-reboot
+  ansible.builtin.apt:
+    update_cache:     true
+    cache_valid_time: 0
+  when: _should_reboot
+
+- name: Simulate upgrade again post-reboot
+  ansible.builtin.command: >
+    apt-get
+    -o Dir::Etc::sourcelist="{{ patch_sources_dir }}"
+    -o Dir::Etc::sourceparts="{{ patch_sources_dir }}"
+    --just-print
+    {{ patch_upgrade_type }}
+  register:     apt_simulate_post
+  changed_when: false
+  failed_when:  apt_simulate_post.rc not in [0, 1]
+  when:         _should_reboot
+
+- name: Parse remaining packages after reboot
+  ansible.builtin.set_fact:
+    _packages_remaining: >-
+      {{
+        apt_simulate_post.stdout_lines
+        | select('match', '^Inst ')
+        | list
+        | length
+        | int
+      }}
+  when: _should_reboot
+
+- name: Default remaining packages to 0 if no reboot occurred
+  ansible.builtin.set_fact:
+    _packages_remaining: 0
+  when: not _should_reboot
+
+- name: Increment iteration counter
+  ansible.builtin.set_fact:
+    _patch_iteration: "{{ _patch_iteration | int + 1 }}"
+
+- name: Recurse — run another patch cycle if packages remain
+  ansible.builtin.include_tasks: patch.yml
+  when:
+    - _packages_remaining | int > 0
+    - _patch_iteration | int < patch_max_iterations

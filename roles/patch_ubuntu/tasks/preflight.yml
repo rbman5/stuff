@@ -1,0 +1,50 @@
+---
+- name: Assert target OS is Ubuntu
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+    fail_msg: "This role only supports Ubuntu. Found: {{ ansible_distribution }}"
+    success_msg: "OS check passed: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+- name: Assert at least one source file is defined
+  ansible.builtin.assert:
+    that:
+      - patch_source_files | length > 0
+    fail_msg: "patch_source_files must contain at least one .list filename"
+
+- name: Check that each approved source file exists on the host
+  ansible.builtin.stat:
+    path: "{{ patch_sources_dir }}/{{ item }}"
+  loop: "{{ patch_source_files }}"
+  register: patch_source_stat
+  loop_control:
+    label: "{{ item }}"
+
+- name: Warn about missing source files
+  ansible.builtin.debug:
+    msg: >
+      WARNING: Source file {{ item.item }} does not exist at
+      {{ patch_sources_dir }}/{{ item.item }} — it will be skipped.
+  loop: "{{ patch_source_stat.results }}"
+  when: not item.stat.exists
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Fail if NO approved source files exist at all
+  ansible.builtin.fail:
+    msg: >
+      None of the approved source files exist on {{ inventory_hostname }}.
+      Checked: {{ patch_source_files | join(', ') }}
+  when: patch_source_stat.results | selectattr('stat.exists') | list | length == 0
+
+- name: Check if reboot-required flag is already set before patching
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: preflight_reboot_required
+
+- name: Warn if host already needs a reboot before patching begins
+  ansible.builtin.debug:
+    msg: >
+      WARNING: {{ inventory_hostname }} already has a pending reboot
+      before patching started. Consider rebooting first.
+  when: preflight_reboot_required.stat.exists

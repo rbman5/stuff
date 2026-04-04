@@ -1,0 +1,67 @@
+---
+- name: Ensure backup directory exists
+  ansible.builtin.file:
+    path:  "{{ patch_backup_dir }}"
+    state: directory
+    mode:  "0755"
+
+- name: Backup /etc/apt/sources.list
+  ansible.builtin.copy:
+    src:        /etc/apt/sources.list
+    dest:       "{{ patch_backup_dir }}/sources.list.bak"
+    remote_src: true
+    mode:       "0644"
+    force:      false
+
+- name: Disable /etc/apt/sources.list (rename to .disabled)
+  ansible.builtin.command:
+    cmd:     mv /etc/apt/sources.list /etc/apt/sources.list.disabled
+    creates: /etc/apt/sources.list.disabled
+
+- name: Find all .list files in sources.list.d
+  ansible.builtin.find:
+    paths:     "{{ patch_sources_dir }}"
+    patterns:  "*.list"
+    file_type: file
+  register: all_source_files
+
+- name: Build list of approved source basenames
+  ansible.builtin.set_fact:
+    _approved_basenames: "{{ patch_source_files | map('basename') | list }}"
+
+- name: Build list of unapproved source files to disable
+  ansible.builtin.set_fact:
+    _unapproved_sources: >-
+      {{
+        all_source_files.files
+        | map(attribute='path')
+        | map('basename')
+        | reject('in', _approved_basenames)
+        | list
+      }}
+
+- name: Show which source files will be disabled
+  ansible.builtin.debug:
+    msg:
+      - "Approved  : {{ _approved_basenames | join(', ') }}"
+      - "Disabling : {{ _unapproved_sources | join(', ') if _unapproved_sources else 'none' }}"
+
+- name: Disable unapproved source list files
+  ansible.builtin.command:
+    cmd: >
+      mv {{ patch_sources_dir }}/{{ item }}
+         {{ patch_backup_dir }}/{{ item }}.disabled
+    creates: "{{ patch_backup_dir }}/{{ item }}.disabled"
+  loop: "{{ _unapproved_sources }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Update apt cache from approved sources only
+  ansible.builtin.apt:
+    update_cache:     true
+    cache_valid_time: 0
+  register: apt_cache_update
+
+- name: Confirm apt cache refreshed
+  ansible.builtin.debug:
+    msg: "apt cache updated at {{ ansible_date_time.iso8601 }}"

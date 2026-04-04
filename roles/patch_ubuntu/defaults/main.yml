@@ -1,0 +1,23 @@
+---
+# ── Approved apt source list files ──────────────────────────────────────────
+patch_source_files:
+  - anuka.list
+  - anuka-local.list
+
+# ── Reboot behaviour ─────────────────────────────────────────────────────────
+patch_reboot_enabled:      true
+patch_force_reboot:        false
+patch_reboot_timeout:      600
+patch_reboot_delay:        30
+
+# ── Retry / verify loop ───────────────────────────────────────────────────────
+patch_max_iterations:      3
+patch_verify_clean:        true
+
+# ── Upgrade type ─────────────────────────────────────────────────────────────
+patch_upgrade_type:        "safe-upgrade"
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+patch_autoremove:          true
+patch_sources_dir:         /etc/apt/sources.list.d
+patch_backup_dir:          /etc/apt/sources.list.d/backup

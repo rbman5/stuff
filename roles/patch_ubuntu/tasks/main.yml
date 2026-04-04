@@ -1,0 +1,16 @@
+---
+- name: Preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [patch, preflight]
+
+- name: Configure approved apt sources
+  ansible.builtin.import_tasks: configure_sources.yml
+  tags: [patch, sources]
+
+- name: Apply patches (iterative loop with reboot)
+  ansible.builtin.import_tasks: patch.yml
+  tags: [patch]
+
+- name: Final verification
+  ansible.builtin.import_tasks: verify.yml
+  tags: [patch, verify]
