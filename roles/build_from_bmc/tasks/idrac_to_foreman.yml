@@ -19,6 +19,12 @@
 #foreman_org_id:            1
 #foreman_hostgroup_id:      1
 #host_ip:                   "10.0.0.50"
+#
+
+
+- name: set idrac_host as bmc
+  set_fact:
+    idrac_host: "{{ bmc }}"
 
 # ──────────────────────────────────────────────
 # 1. Gather iDRAC system info via Redfish API

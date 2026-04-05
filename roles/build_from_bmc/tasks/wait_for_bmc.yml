@@ -72,12 +72,12 @@
       ansible.builtin.debug:
         msg: "BMC endpoint selected: {{ bmc }} (responded first out of {{ bmc_candidates | join(', ') }})"
 
-- name: Use the winning BMC endpoint
-  ansible.builtin.uri:
-    url:            "https://{{ bmc }}/redfish/v1/Systems/System.Embedded.1"
-    method:         GET
-    user:           "{{ idrac_user }}"
-    password:       "{{ idrac_password }}"
-    validate_certs: false
-    force_basic_auth: true
-  delegate_to: localhost
+#- name: Use the winning BMC endpoint
+#  ansible.builtin.uri:
+#    url:            "https://{{ bmc }}/redfish/v1/Systems/System.Embedded.1"
+#    method:         GET
+#    user:           "{{ idrac_user }}"
+#    password:       "{{ idrac_password }}"
+#    validate_certs: false
+#    force_basic_auth: true
+#  delegate_to: localhost

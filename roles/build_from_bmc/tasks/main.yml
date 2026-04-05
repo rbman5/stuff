@@ -1,0 +1,23 @@
+---
+
+
+
+
+- name: Wait for BMC
+  include_tasks: wait_for_bmc.yml
+
+- name: find bmc password
+  include_tasks: find_bmc_password.yml
+
+- name: idrac to foreman
+  include_tasks: idrac_to_foreman.yml
+
+- name: Use the winning BMC endpoint
+  ansible.builtin.uri:
+    url:            "https://{{ bmc }}/redfish/v1/Systems/System.Embedded.1"
+    method:         GET
+    user:           "{{ idrac_user }}"
+    password:       "{{ idrac_password }}"
+    validate_certs: false
+    force_basic_auth: true
+  delegate_to: localhost

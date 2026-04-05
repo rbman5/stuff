@@ -1,0 +1,19 @@
+
+
+bmc_candidates:
+  - "{{ serial }}-r"
+  - "{{ serial }}"
+  - "{{ inventory_hostname }}-r"
+  - "idrac-{{ serial }}"
+
+idrac_credentials:
+  - username: "root"
+    password: "calvin"
+  - username: "root"
+    password: "changeme"
+  - username: "admin"
+    password: "admin"
+  - username: "root"
+    password: "{{ vault_idrac_custom_password }}"
+  - username: "root"
+    password: "{{ oob_root }}
