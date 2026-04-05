@@ -1,0 +1,12 @@
+---
+
+# Build straight away with bmc ip
+# ansible-playbook build_from_bmc.yml -l dc3prdweb01 -e "bmc=10.6.6.10" 
+#
+# Locate bmc via DNS entries like <serial>-r or <hostname>-r  It will wait and ping multiple variations. See vars file
+# ansible-playbook build_from_bmc.yml -l dc3prdweb01 -e "serial=HG8HXJA"
+
+- name: Build a host using BMC
+  hosts: all
+  roles:
+    - build_from_bmc
