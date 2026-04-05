@@ -2,7 +2,7 @@
 - hosts: all
   become: true
   vars:
-    rollback_snapshot: "1"
+    rollback_snapshot: "4"
     #btrfs_device: /dev/disk/by-id/dm-uuid-LVM-xOUP6ZOmgQcKkBiMSjpJ1nUPQaz3RPYfPI4rfdwZdfSvVnUfOYgvLLHs7HPe6o8a
     btrfs_device: /dev/disk/by-id/dm-uuid-LVM-ysMwAc6vQtXpkKtN8yeMleV0OblDrp3b8xeVnW0aiw3mrOUxQ3WK2EfCel1cCiK4 
 
@@ -132,3 +132,20 @@
     - name: Show fstab entries
       ansible.builtin.debug:
         msg: "{{ fstab_check.stdout_lines }}"
+
+    - name: Check btrfs ro status
+      command: btrfs property get / ro
+      become: true
+      register: btrfs_ro_status
+      changed_when: false
+      tags:
+        - never
+        - rw
+    
+    - name: Mark btrfs volume as read-write
+      command: btrfs property set / ro false
+      become: true
+      when: "'ro=true' in btrfs_ro_status.stdout"
+      tags:
+        - never
+        - rw
