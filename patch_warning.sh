@@ -64,7 +64,9 @@ _patch_warning() {
             echo -e "${RED}  Save your work and wrap up any long-running processes.${RESET}"
         else
 	    if [ -f "$HOME/.acknowledge_patches" ]; then
-                return
+		if [[ $(find "$HOME/.acknowledge_patches" -mtime -14) ]]; then
+                    return
+                fi
             fi
             echo -e "${YELLOW}${BOLD}⚠  PATCH WARNING: This host will be patched in ${days_until} days (${second_sat_ymd})${RESET}"
             echo -e "${YELLOW}  Plan accordingly and save any important work.${RESET}"
