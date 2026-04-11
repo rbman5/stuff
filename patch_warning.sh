@@ -54,19 +54,25 @@ _patch_warning() {
 
         echo ""
         if (( days_until == 0 )); then
-            echo -e "${RED}${BOLD}╔══════════════════════════════════════════════╗${RESET}"
+            echo -e "${RED}${BOLD}╔══════════════════════════════════════════════════════╗${RESET}"
             echo -e "${RED}${BOLD}║  ⚠  PATCH DAY — THIS HOST IS BEING PATCHED TODAY  ⚠  ║${RESET}"
-            echo -e "${RED}${BOLD}╚══════════════════════════════════════════════╝${RESET}"
+            echo -e "${RED}${BOLD}╚══════════════════════════════════════════════════════╝${RESET}"
             echo -e "${RED}  Scheduled maintenance is today: ${second_sat_ymd}${RESET}"
             echo -e "${RED}  Save your work and expect possible downtime.${RESET}"
         elif (( days_until == 1 )); then
             echo -e "${RED}${BOLD}⚠  PATCH WARNING: This host will be patched TOMORROW (${second_sat_ymd})${RESET}"
             echo -e "${RED}  Save your work and wrap up any long-running processes.${RESET}"
         else
+	    if [ -f "$HOME/.acknowledge_patches" ]; then
+                return
+            fi
             echo -e "${YELLOW}${BOLD}⚠  PATCH WARNING: This host will be patched in ${days_until} days (${second_sat_ymd})${RESET}"
             echo -e "${YELLOW}  Plan accordingly and save any important work.${RESET}"
+	    echo -e "${YELLOW}  Run ${BOLD}touch ~/.acknowledge_patches ${RESET}${YELLOW}to hide this message ${RESET}"
+	    echo -e "${YELLOW}  You accept no more reminders for patches except the day before and day of ${RESET}"
         fi
         echo ""
+
     fi
 }
 
