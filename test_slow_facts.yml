@@ -1,4 +1,12 @@
 # test_slow_facts.yml
+#
+#ansible-playbook test_slow_facts.yml \
+#  -i inventory/test_hosts \
+#  --forks 10 \
+#  -e "ANSIBLE_CALLBACKS_ENABLED=slow_facts" \
+#  -e "SLOW_FACTS_WARN_SECONDS=5" \
+#  -e "SLOW_FACTS_CRITICAL_SECONDS=30"
+#
 - name: Test slow_facts callback — parallel
   hosts: test
   gather_facts: false
