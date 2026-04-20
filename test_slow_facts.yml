@@ -1,0 +1,15 @@
+# test_slow_facts.yml
+- name: Test slow_facts callback — parallel
+  hosts: test
+  gather_facts: false
+  serial: 0       # run all hosts in parallel
+
+  pre_tasks:
+    - name: Gathering Facts
+      ansible.builtin.shell: "sleep {{ sleep_secs }}"
+      changed_when: false
+
+  tasks:
+    - name: Dummy task after facts
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} finished"
